@@ -21,7 +21,7 @@ The selected style will be applied to your current prompts.
 
 ### Thanks
 
-Huge thanks for https://github.com/ahgsql/StyleSelectorXL as i got the script structure from his repo, and Antoni Romanski for his wonderful support helping me understand the overall structure better.
+Huge thanks for https://github.com/ahgsql/StyleSelectorXL as i got the script structure from his repo, and [vereym](https://github.com/vereym) for his wonderful support helping me understand the overall structure better.
 
 ### License
 
