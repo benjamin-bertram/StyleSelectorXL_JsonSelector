@@ -1,6 +1,6 @@
-## Style Selector for SDXL 1.1
+## Style Selector for Stable Diffusion Models
 
-This repository contains a Automatic1111 Extension allows users to select and apply different styles to their inputs using SDXL 1.1.
+This repository contains a Automatic1111 Extension allows users to select and apply different styles to their inputs using Stable Diffusion.
 
 ### Styles
 
