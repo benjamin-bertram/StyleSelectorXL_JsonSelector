@@ -6,28 +6,29 @@ from modules.ui_components import FormRow, FormColumn, FormGroup, ToolButton
 import json
 import os
 import random
-stylespath = ""
 
+json_path = ""
+folder = scripts.basedir()
+json_list = [f for f in os.listdir(folder) if f.endswith('.json')]
 
-def get_json_content(file_path):
+def get_json_content(json_path_in):
     try:
-        with open(file_path, 'rt', encoding="utf-8") as file:
+        with open(json_path_in, 'rt', encoding="utf-8") as file:
             json_data = json.load(file)
             return json_data
     except Exception as e:
         print(f"A Problem occurred: {str(e)}")
 
-
-def read_sdxl_styles(json_data):
+def read_sdxl_styles(json_data_in):
     # Check that data is a list
-    if not isinstance(json_data, list):
+    if not isinstance(json_data_in, list):
         print("Error: input data must be a list")
         return None
 
     names = []
 
     # Iterate over each item in the data list
-    for item in json_data:
+    for item in json_data_in:
         # Check that the item is a dictionary
         if isinstance(item, dict):
             # Check that 'name' is a key in the dictionary
@@ -37,18 +38,8 @@ def read_sdxl_styles(json_data):
     names.sort()
     return names
 
-
-def getStyles():
-    global stylespath
-    json_path = os.path.join(scripts.basedir(), 'sdxl_styles.json')
-    stylespath = json_path
+def createPositive(style_name, positive):
     json_data = get_json_content(json_path)
-    styles = read_sdxl_styles(json_data)
-    return styles
-
-
-def createPositive(style, positive):
-    json_data = get_json_content(stylespath)
     try:
         # Check if json_data is a list
         if not isinstance(json_data, list):
@@ -62,21 +53,20 @@ def createPositive(style, positive):
                     "Invalid template. Missing 'name' or 'prompt' field.")
 
             # Replace {prompt} in the matching template
-            if template['name'] == style:
+            if template['name'] == style_name:
                 positive = template['prompt'].replace(
                     '{prompt}', positive)
 
                 return positive
 
         # If function hasn't returned yet, no matching template was found
-        raise ValueError(f"No template found with name '{style}'.")
+        raise ValueError(f"No template found with name '{style_name}'.")
 
     except Exception as e:
         print(f"An error occurred: {str(e)}")
 
-
-def createNegative(style, negative):
-    json_data = get_json_content(stylespath)
+def createNegative(style_name, negative):
+    json_data = get_json_content(json_path)
     try:
         # Check if json_data is a list
         if not isinstance(json_data, list):
@@ -90,7 +80,7 @@ def createNegative(style, negative):
                     "Invalid template. Missing 'name' or 'prompt' field.")
 
             # Replace {prompt} in the matching template
-            if template['name'] == style:
+            if template['name'] == style_name:
                 json_negative_prompt = template.get('negative_prompt', "")
                 if negative:
                     negative = f"{json_negative_prompt}, {negative}" if json_negative_prompt else negative
@@ -100,17 +90,15 @@ def createNegative(style, negative):
                 return negative
 
         # If function hasn't returned yet, no matching template was found
-        raise ValueError(f"No template found with name '{style}'.")
+        raise ValueError(f"No template found with name '{style_name}'.")
 
     except Exception as e:
         print(f"An error occurred: {str(e)}")
 
-
 class StyleSelectorXL(scripts.Script):
     def __init__(self) -> None:
         super().__init__()
-
-    styleNames = getStyles()
+        #self.styleNames = getStyles(self.json_list)
 
     def title(self):
         return "Style Selector for SDXL 1.0"
@@ -121,7 +109,7 @@ class StyleSelectorXL(scripts.Script):
     def ui(self, is_img2img):
         enabled = getattr(shared.opts, "enable_styleselector_by_default", True)
         with gr.Group():
-            with gr.Accordion("SDXL Styles", open=enabled):
+            with gr.Accordion("SDXL Styles NEW", open=enabled):
                 with FormRow():
                     with FormColumn(min_width=160):
                         is_enabled = gr.Checkbox(
@@ -129,44 +117,52 @@ class StyleSelectorXL(scripts.Script):
                     with FormColumn(elem_id="Randomize Style"):
                         randomize = gr.Checkbox(
                             value=False, label="Randomize Style", info="This Will Override Selected Style")
-                    with FormColumn(elem_id="Randomize For Each Iteration"):
-                        randomizeEach = gr.Checkbox(
-                            value=False, label="Randomize For Each Iteration", info="Every prompt in Batch Will Have Random Style")
-
+                   
                 with FormRow():
                     with FormColumn(min_width=160):
+                        json_file = gr.Dropdown(
+                            json_list,
+                            value=json_list[0] if json_list else "Please put styles in folder",
+                            label="Select Stylefile")
+
+                        def getStyles(json_file):
+                            global json_path
+                            json_path = os.path.join(folder, json_file)
+                            json_data_out = get_json_content(json_path)
+                            names = read_sdxl_styles(json_data_out)
+                            print("hello")
+                            return names
+                        
+                        self.styleNames = json_list[0]
+                        selection = gr.Radio(
+                            label='Style', choices=self.styleNames, value=self.styleNames)
+                        json_file.input(getStyles, json_file, selection)
+
+                        self.styleNames = getStyles(selection)
+
                         allstyles = gr.Checkbox(
-                            value=False, label="Generate All Styles In Order", info="To Generate Your Prompt in All Available Styles, Its Better to set batch count to " + str(len(self.styleNames)) + " ( Style Count)")
-
-                style_ui_type = shared.opts.data.get(
-                    "styles_ui",  "radio-buttons")
-
-                if style_ui_type == "select-list":
-                    style = gr.Dropdown(
-                        self.styleNames, value='base', multiselect=False, label="Select Style")
-                else:
-                    style = gr.Radio(
-                        label='Style', choices=self.styleNames, value='base')
-
+                            value=False, label="Generate All Styles In Order", 
+                            info="To Generate Your Prompt in All Available Styles, Its Better to set batch count to " + str(len(self.styleNames)) + " ( Style Count)")
+                    
         # Ignore the error if the attribute is not present
 
-        return [is_enabled, randomize, randomizeEach, allstyles, style]
+        return [is_enabled, randomize, allstyles, selection]
 
-    def process(self, p, is_enabled, randomize, randomizeEach, allstyles,  style):
+    def process(self, p, is_enabled, randomize, allstyles, style_param):
         if not is_enabled:
             return
 
         if randomize:
-            style = random.choice(self.styleNames)
+            style_param = random.choice(self.styleNames)
         batchCount = len(p.all_prompts)
 
         if(batchCount == 1):
             # for each image in batch
             for i, prompt in enumerate(p.all_prompts):
-                positivePrompt = createPositive(style, prompt)
+                positivePrompt = createPositive(style_param, prompt)
                 p.all_prompts[i] = positivePrompt
             for i, prompt in enumerate(p.all_negative_prompts):
-                negativePrompt = createNegative(style, prompt)
+                negativePrompt = createNegative(style_param, prompt)
                 p.all_negative_prompts[i] = negativePrompt
         if(batchCount > 1):
             styles = {}
@@ -174,22 +170,22 @@ class StyleSelectorXL(scripts.Script):
                 if(randomize):
                     styles[i] = random.choice(self.styleNames)
                 else:
-                    styles[i] = style
+                    styles[i] = style_param
                 if(allstyles):
                     styles[i] = self.styleNames[i % len(self.styleNames)]
             # for each image in batch
             for i, prompt in enumerate(p.all_prompts):
                 positivePrompt = createPositive(
-                    styles[i] if randomizeEach or allstyles else styles[0], prompt)
+                    styles[i] if allstyles else styles[0], prompt)
                 p.all_prompts[i] = positivePrompt
             for i, prompt in enumerate(p.all_negative_prompts):
                 negativePrompt = createNegative(
-                    styles[i] if randomizeEach or allstyles else styles[0], prompt)
+                    styles[i] if allstyles else styles[0], prompt)
                 p.all_negative_prompts[i] = negativePrompt
 
         p.extra_generation_params["Style Selector Enabled"] = True
         p.extra_generation_params["Style Selector Randomize"] = randomize
-        p.extra_generation_params["Style Selector Style"] = style
+        p.extra_generation_params["Style Selector Style"] = style_param
 
     def after_component(self, component, **kwargs):
         # https://github.com/AUTOMATIC1111/stable-diffusion-webui/pull/7456#issuecomment-1414465888 helpfull link
@@ -207,7 +203,6 @@ class StyleSelectorXL(scripts.Script):
             #self.neg_prompt_boxTXT = component
         # if kwargs.get("elem_id") == "img2img_neg_prompt":
             #self.neg_prompt_boxIMG = component
-
 
 def on_ui_settings():
     section = ("styleselector", "Style Selector")
