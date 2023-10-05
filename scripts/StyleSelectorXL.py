@@ -1,3 +1,5 @@
+#modified StyleSelector for loading your own JSON
+
 import contextlib
 
 import gradio as gr
@@ -8,6 +10,7 @@ import os
 import random
 
 json_path = ""
+styleNames = ""
 folder = scripts.basedir()
 json_list = [f for f in os.listdir(folder) if f.endswith('.json')]
 
@@ -98,7 +101,6 @@ def createNegative(style_name, negative):
 class StyleSelectorXL(scripts.Script):
     def __init__(self) -> None:
         super().__init__()
-        #self.styleNames = getStyles(self.json_list)
 
     def title(self):
         return "Style Selector for SDXL 1.0"
@@ -117,62 +119,75 @@ class StyleSelectorXL(scripts.Script):
                     with FormColumn(elem_id="Randomize Style"):
                         randomize = gr.Checkbox(
                             value=False, label="Randomize Style", info="This Will Override Selected Style")
-                   
+
+                def getStyles(json_value):
+                    global json_path
+                    global styleNames
+                    json_path = os.path.join(folder, json_value)
+                    json_data_out = get_json_content(json_path)
+                    styleNames = read_sdxl_styles(json_data_out)
+                    return styleNames
+
+                styleNames = getStyles(json_list[0]) if json_list else []
+
                 with FormRow():
                     with FormColumn(min_width=160):
                         json_file = gr.Dropdown(
-                            json_list,
+                            label="Select Stylefile",
+                            choices=json_list,
                             value=json_list[0] if json_list else "Please put styles in folder",
-                            label="Select Stylefile")
-
-                        def getStyles(json_file):
-                            global json_path
-                            json_path = os.path.join(folder, json_file)
-                            json_data_out = get_json_content(json_path)
-                            names = read_sdxl_styles(json_data_out)
-                            print("hello")
-                            return names
+                            multiselect=False
+                        )
+                        style_ui_type = shared.opts.data.get(
+                            "styles_ui",  "radio-buttons")
                         
-                        self.styleNames = json_list[0]
-                        selection = gr.Radio(
-                            label='Style', choices=self.styleNames, value=self.styleNames)
-                        json_file.input(getStyles, json_file, selection)
-
-                        self.styleNames = getStyles(selection)
+                        if style_ui_type == "select-list":
+                           style = gr.Dropdown(
+                                label='Select Style', choices=styleNames, value=json_list[0], multiselect=False)
+                        else:
+                            style = gr.Radio(
+                                label='Style', choices=styleNames, value=json_list[0], multiselect=False)
 
                         allstyles = gr.Checkbox(
-                            value=False, label="Generate All Styles In Order", 
-                            info="To Generate Your Prompt in All Available Styles, Its Better to set batch count to " + str(len(self.styleNames)) + " ( Style Count)")
-                    
-        # Ignore the error if the attribute is not present
+                            value=False,
+                            label="Generate All Styles In Order",
+                            info=f"To Generate Your Prompt in All Available Styles, it's better to set batch count to {len(styleNames)} (Style Count)"
+                        )
 
-        return [is_enabled, randomize, allstyles, selection]
+                        #Event Changer and Listener
+                        def json_changer(selected_value):
+                            styleNames_new = getStyles(selected_value)
+                            return [style.update(choices=styleNames_new), allstyles.update(info=f"To Generate Your Prompt in All Available Styles, it's better to set batch count to {len(styleNames_new)} (Style Count)")]
 
-    def process(self, p, is_enabled, randomize, allstyles, style_param):
+                        json_file.change(json_changer, inputs=json_file, outputs=[style,allstyles])
+                   
+        return [is_enabled, randomize, allstyles, style]
+
+    def process(self, p, is_enabled, randomize, allstyles, style):
         if not is_enabled:
             return
 
         if randomize:
-            style_param = random.choice(self.styleNames)
+            style = random.choice(styleNames)
         batchCount = len(p.all_prompts)
 
         if(batchCount == 1):
             # for each image in batch
             for i, prompt in enumerate(p.all_prompts):
-                positivePrompt = createPositive(style_param, prompt)
+                positivePrompt = createPositive(style, prompt)
                 p.all_prompts[i] = positivePrompt
             for i, prompt in enumerate(p.all_negative_prompts):
-                negativePrompt = createNegative(style_param, prompt)
+                negativePrompt = createNegative(style, prompt)
                 p.all_negative_prompts[i] = negativePrompt
         if(batchCount > 1):
             styles = {}
             for i, prompt in enumerate(p.all_prompts):
                 if(randomize):
-                    styles[i] = random.choice(self.styleNames)
+                    styles[i] = random.choice(styleNames)
                 else:
-                    styles[i] = style_param
+                    styles[i] = style
                 if(allstyles):
-                    styles[i] = self.styleNames[i % len(self.styleNames)]
+                    styles[i] = styleNames[i % len(styleNames)]
             # for each image in batch
             for i, prompt in enumerate(p.all_prompts):
                 positivePrompt = createPositive(
@@ -185,7 +200,7 @@ class StyleSelectorXL(scripts.Script):
 
         p.extra_generation_params["Style Selector Enabled"] = True
         p.extra_generation_params["Style Selector Randomize"] = randomize
-        p.extra_generation_params["Style Selector Style"] = style_param
+        p.extra_generation_params["Style Selector Style"] = style
 
     def after_component(self, component, **kwargs):
         # https://github.com/AUTOMATIC1111/stable-diffusion-webui/pull/7456#issuecomment-1414465888 helpfull link
